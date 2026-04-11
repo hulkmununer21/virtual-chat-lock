@@ -1,10 +1,11 @@
 {
-  "name": "Android Dev with Tailscale",
-  "image": "mcr.microsoft.com/devcontainers/java:17",
+  "name": "Android Chat Lock Dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "features": {
-    "ghcr.io/devcontainers/features/android:1": {},
-    "ghcr.io/tailscale/codespace/tailscale": {
-      "version": "latest"
+    "ghcr.io/tailscale/codespace/tailscale:1": {
+        "version": "latest"
     }
   },
   "customizations": {
@@ -16,5 +17,6 @@
         "Continue.continue"
       ]
     }
-  }
+  },
+  "postStartCommand": "/bin/bash ./.devcontainer/setup-tailscale.sh"
 }
