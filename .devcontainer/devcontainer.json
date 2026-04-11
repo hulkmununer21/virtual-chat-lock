@@ -1,0 +1,20 @@
+{
+  "name": "Android Dev with Tailscale",
+  "image": "mcr.microsoft.com/devcontainers/java:17",
+  "features": {
+    "ghcr.io/devcontainers/features/android:1": {},
+    "ghcr.io/tailscale/codespace/tailscale": {
+      "version": "latest"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "mathiasfrohlich.Kotlin",
+        "naco-siren.gradle-language",
+        "saoudrizwan.claude-dev",
+        "Continue.continue"
+      ]
+    }
+  }
+}
