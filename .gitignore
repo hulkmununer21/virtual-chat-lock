@@ -1,0 +1,45 @@
+# Gradle files
+.gradle/
+build/
+.gradle
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log files
+*.log
+
+# Android Studio Navigation editor temp files
+.navigation/
+
+# Android Studio captures folder
+captures/
+
+# IntelliJ
+*.iml
+.idea/
+*.iws
+*.ipr
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be committed to version control
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Miscellaneous files
+.DS_Store
+*.jks
+*.keystore
+
+# Python files
+*.pyc
+
+# Kotlin generates
+.kotlin/
+
+# Misc build files
+bin/
+out/
