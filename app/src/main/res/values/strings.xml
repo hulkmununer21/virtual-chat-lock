@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Xnigma</string>
+    <string name="accessibility_description">Xnigma requires this to read and inject encrypted messages into your chat applications.</string>
 </resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Backup all files in shared preferences -->
+    <include domain="sharedpref" path="."/>
+    <!-- Backup database files -->
+    <include domain="database" path="."/>
+    <!-- Backup files in the app's files directory -->
+    <include domain="file" path="."/>
+</full-backup-content>

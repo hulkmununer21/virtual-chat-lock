@@ -3,7 +3,6 @@ package com.xnigma.xnigma.ui
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.util.Base64
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -26,6 +25,7 @@ import kotlinx.coroutines.withContext
 fun OnboardingScreen(onOnboardingComplete: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current // Grab context to save the final state
 
     Scaffold(
         bottomBar = {
@@ -49,6 +49,10 @@ fun OnboardingScreen(onOnboardingComplete: () -> Unit) {
                     if (pagerState.currentPage < 2) {
                         coroutineScope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                     } else {
+                        // STATE RETENTION: Seal the onboarding process only when they hit Finish
+                        val sharedPrefs = context.getSharedPreferences("xnigma_prefs", Context.MODE_PRIVATE)
+                        sharedPrefs.edit().putBoolean("is_onboarding_completed", true).apply()
+                        
                         onOnboardingComplete()
                     }
                 }) {
@@ -57,7 +61,6 @@ fun OnboardingScreen(onOnboardingComplete: () -> Unit) {
             }
         }
     ) { paddingValues ->
-        // Applied paddingValues so the pager doesn't hide behind the bottom bar
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
@@ -75,6 +78,8 @@ fun OnboardingScreen(onOnboardingComplete: () -> Unit) {
 
 @Composable
 fun WelcomePage() {
+    var showImportDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -93,6 +98,15 @@ fun WelcomePage() {
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyLarge
         )
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        TextButton(onClick = { showImportDialog = true }) {
+            Text("I already have an account (Import Identity)")
+        }
+    }
+
+    if (showImportDialog) {
+        ImportIdentityDialog(onDismiss = { showImportDialog = false })
     }
 }
 
@@ -102,42 +116,36 @@ fun KeyGenerationPage() {
     var generatedKey by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    // This block runs automatically when the user swipes to this page
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val cryptoManager = CryptoManager()
-
-            // 1. Generate the RSA KeyPair in software
-            val keyPair = cryptoManager.generateIdentityKeyPair()
-
-            // 2. Encode the Public Key to a Base64 String for sharing
-            val publicKeyBase64 = Base64.encodeToString(
-                keyPair.public.encoded,
-                Base64.NO_WRAP
-            )
-
-            // 3. Encrypt the Private Key using the Hardware Master Key
-            val securedPrivateKeyBlob = cryptoManager.securePrivateKey(keyPair.private.encoded)
-            
-            // 4. Encode the encrypted Private Key blob to Base64 to store it safely
-            val securedPrivateKeyBase64 = Base64.encodeToString(
-                securedPrivateKeyBlob,
-                Base64.NO_WRAP
-            )
-
-            // 5. Save everything to SharedPreferences
             val sharedPrefs = context.getSharedPreferences("xnigma_prefs", Context.MODE_PRIVATE)
-            sharedPrefs.edit().apply {
-                putString("public_key", publicKeyBase64)
-                putString("secured_private_key", securedPrivateKeyBase64)
-                putBoolean("is_onboarded", true)
-                apply()
-            }
+            val existingKey = sharedPrefs.getString("public_key", null)
 
-            // 6. Switch back to the Main thread to update the UI
-            withContext(Dispatchers.Main) {
-                generatedKey = publicKeyBase64
-                isGenerating = false
+            // CRITICAL SAFEGUARD: Skip generation if they just imported an identity
+            if (existingKey != null) {
+                withContext(Dispatchers.Main) {
+                    generatedKey = existingKey
+                    isGenerating = false
+                }
+            } else {
+                val cryptoManager = CryptoManager()
+                val keyPair = cryptoManager.generateIdentityKeyPair()
+                
+                val publicKeyBase64 = android.util.Base64.encodeToString(keyPair.public.encoded, android.util.Base64.NO_WRAP)
+                val securedPrivateKeyBlob = cryptoManager.securePrivateKey(keyPair.private.encoded)
+                val securedPrivateKeyBase64 = android.util.Base64.encodeToString(securedPrivateKeyBlob, android.util.Base64.NO_WRAP)
+
+                sharedPrefs.edit().apply {
+                    putString("public_key", publicKeyBase64)
+                    putString("secured_private_key", securedPrivateKeyBase64)
+                    // Removed the premature flag here so they don't skip the permissions page
+                    apply()
+                }
+
+                withContext(Dispatchers.Main) {
+                    generatedKey = publicKeyBase64
+                    isGenerating = false
+                }
             }
         }
     }
@@ -149,7 +157,7 @@ fun KeyGenerationPage() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Generating Your Identity", style = MaterialTheme.typography.headlineMedium)
+        Text(text = "Your Identity", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(32.dp))
 
         if (isGenerating) {
@@ -162,7 +170,7 @@ fun KeyGenerationPage() {
                     text = generatedKey,
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 4, // Truncates the giant key visually
+                    maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -170,6 +178,92 @@ fun KeyGenerationPage() {
             Text("This is your public key. Keep it safe.", color = MaterialTheme.colorScheme.primary)
         }
     }
+}
+
+@Composable
+fun ImportIdentityDialog(onDismiss: () -> Unit) {
+    var payload by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isImporting by remember { mutableStateOf(false) }
+    
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import Identity") },
+        text = {
+            Column {
+                Text("Paste your exported identity string and the password you used to lock it.", style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = payload,
+                    onValueChange = { payload = it },
+                    label = { Text("Encrypted Payload") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Decryption Password") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    isImporting = true
+                    errorMessage = null
+                    
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            val cryptoManager = CryptoManager()
+                            val (publicKeyBase64, newSecuredPrivateKeyBlob) = cryptoManager.importIdentityWithPassword(payload.trim(), password)
+                            
+                            val securedPrivateKeyBase64 = android.util.Base64.encodeToString(
+                                newSecuredPrivateKeyBlob,
+                                android.util.Base64.NO_WRAP
+                            )
+
+                            val sharedPrefs = context.getSharedPreferences("xnigma_prefs", Context.MODE_PRIVATE)
+                            sharedPrefs.edit().apply {
+                                putString("public_key", publicKeyBase64)
+                                putString("secured_private_key", securedPrivateKeyBase64)
+                                apply()
+                            }
+
+                            withContext(Dispatchers.Main) {
+                                isImporting = false
+                                onDismiss()
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                isImporting = false
+                                errorMessage = "Import failed. Invalid payload or wrong password."
+                            }
+                        }
+                    }
+                },
+                enabled = payload.isNotBlank() && password.isNotBlank() && !isImporting
+            ) {
+                Text(if (isImporting) "Importing..." else "Import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isImporting) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -192,7 +286,6 @@ fun PermissionsPage() {
         Spacer(modifier = Modifier.height(32.dp))
         
         Button(onClick = {
-            // Opens the Android Accessibility Settings
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             context.startActivity(intent)
         }) {
@@ -202,7 +295,6 @@ fun PermissionsPage() {
         Spacer(modifier = Modifier.height(8.dp))
         
         Button(onClick = {
-            // Opens the Android Display Over Other Apps Settings
             val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
             context.startActivity(intent)
         }) {

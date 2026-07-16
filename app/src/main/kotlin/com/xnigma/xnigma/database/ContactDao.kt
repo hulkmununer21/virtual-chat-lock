@@ -1,20 +1,24 @@
 package com.xnigma.xnigma.database
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ContactDao {
+    @Query("SELECT * FROM contacts ORDER BY username ASC")
+    fun getAllContacts(): Flow<List<Contact>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertContact(contact: Contact)
 
-    // Returns a Flow stream so the Compose UI auto-updates when data changes
-    @Query("SELECT * FROM contacts ORDER BY dateAdded DESC")
-    fun getAllContacts(): Flow<List<Contact>>
+    @Update
+    suspend fun updateContact(contact: Contact)
 
-    @Query("DELETE FROM contacts WHERE id = :contactId")
-    suspend fun deleteContact(contactId: Int)
+    @Delete
+    suspend fun deleteContact(contact: Contact)
 }

@@ -1,9 +1,13 @@
 package com.xnigma.xnigma.ui
 
+import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.xnigma.xnigma.database.AppDatabase
 
 // Define our routes as simple strings
 object Routes {
@@ -14,10 +18,16 @@ object Routes {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
 
-    // We set startDestination to ONBOARDING for now. 
-    // Later, we will add logic to check DataStore: if keys exist, start at DASHBOARD.
-    NavHost(navController = navController, startDestination = Routes.ONBOARDING) {
+    // STATE RETENTION: Read the flag to check if keys exist and permissions are granted
+    val sharedPrefs = context.getSharedPreferences("xnigma_prefs", Context.MODE_PRIVATE)
+    val isOnboardingCompleted = sharedPrefs.getBoolean("is_onboarding_completed", false)
+
+    // Dynamically set the start destination based on the flag
+    val startDestination = if (isOnboardingCompleted) Routes.DASHBOARD else Routes.ONBOARDING
+
+    NavHost(navController = navController, startDestination = startDestination) {
         
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
@@ -31,13 +41,16 @@ fun AppNavigation() {
         }
 
         composable(Routes.DASHBOARD) {
-            DashboardScreen() // We will build this in the next phase
+            // 1. Get the local Room database instance
+            val database = AppDatabase.getDatabase(context)
+            
+            // 2. Pass the DAO into our custom ViewModel Factory
+            val factory = DashboardViewModelFactory(database.contactDao())
+            
+            // 3. Create the ViewModel and pass it to the actual DashboardScreen
+            val viewModel: DashboardViewModel = viewModel(factory = factory)
+            
+            DashboardScreen(viewModel = viewModel)
         }
     }
-}
-
-// A temporary placeholder for the Dashboard
-@Composable
-fun DashboardScreen() {
-    androidx.compose.material3.Text("Welcome to the Dashboard")
 }
